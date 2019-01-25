@@ -11,15 +11,16 @@ const uint8_t  PIN_RX = 2;
 const unsigned int BAUDRATE = 9600;
 //GSM Requirements
 const uint8_t MESSAGE_LENGTH = 160;
-char PHONE_NUMBER[]= "09672781368";
+char PHONE_NUMBER[]= "09xxxxxxxxx";
 char MESSAGE[] =   "System up";
 char message[MESSAGE_LENGTH];
 int messageIndex = 0;
 char phone[16];
 char datetime[24];
-
+//END
 unsigned int subscriberBalance = 0;
 bool checkInbox = false;
+unsigned int kiloWatt = 0;
 struct Options{
 
     char code[6];
@@ -42,13 +43,13 @@ void setup() {
   pzem.setAddress(ip);
   lcd.begin(20, 4); // lcd rows and columns
  
-  strcpy(Option1.code,"PE100");
+  strcpy(Option1.code,"PE100"); //assign sms code for 100KW
   Option1.value = 100;//100 KW
 
-  strcpy(Option2.code,"PE200");
+  strcpy(Option2.code,"PE200"); //assign sms code for 200KW
   Option2.value = 200;//200 KW
 
-  strcpy(Option1.code,"PE300");
+  strcpy(Option1.code,"PE300"); //assign sms code for 300KW
   Option1.value = 300;//300 KW
    
 }
@@ -130,6 +131,8 @@ void loop() {
 
   
   Serial.println();
+
+  
 
   delay(100);
 }
