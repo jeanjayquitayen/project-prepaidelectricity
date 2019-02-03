@@ -124,7 +124,12 @@ char GPRS::isSMSunread()
 {
     char gprsBuffer[48];  //48 is enough to see +CMGL:
     char *s;
-    
+        //fix problem not in text mode
+    sim900_send_cmd("AT+CFUN=1\r\n");
+    delay(100);
+    sim900_send_cmd("AT+CMGF=1\r\n");
+    delay(100);
+
 
     //List of all UNREAD SMS and DON'T change the SMS UNREAD STATUS
     sim900_send_cmd(F("AT+CMGL=\"REC UNREAD\",1\r\n"));
