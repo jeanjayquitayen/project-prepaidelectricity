@@ -54,6 +54,8 @@ bool GPRS::init(void)
 		return false;
     }
     //fix problem not in text mode
+    sim900_send_cmd("ATE0");
+    delay(100);
     sim900_send_cmd("AT+CFUN=1\r\n");
     delay(100);
     sim900_send_cmd("AT+CMGF=1\r\n");
