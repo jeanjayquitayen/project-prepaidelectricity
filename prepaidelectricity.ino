@@ -5,15 +5,17 @@
 #include <Wire.h>
 #include <EEPROM.h>     // We are going to read and write to EEPROM
 #include <stdlib.h>
-uint8_t extracted_stripednum[5]={0,0,0,0,0};
+#define subscriberBalanceADDR 0xF
+#define kiloWattPrevADDR 0x16
+
 //GSM HARDWARE SETUP
 #define  PIN_TX  53
 #define  PIN_RX  52
 #define  BAUDRATE  9600
+
 //GSM Requirements
 const uint8_t MESSAGE_LENGTH = 160;
 const uint8_t PHONE_LENGTH = 11;
-char PHONE_NUMBER[]= "09567389688";
 char MASTER_NUMBER[] = "+639xxxxxxxxx"; //template , do not change
 char MESSAGE[] =   "System up";
 char myreply[] =   "message received!";
@@ -26,6 +28,7 @@ char phone[16];
 char datetime[24];
 //END
 float subscriberBalance = 0.0f;
+float subscriberPoints = 0.0f;
 bool checkInbox = false;
 float kiloWatt = 0.0f;
 float kiloWattPrev = 0.0f;
@@ -34,57 +37,64 @@ struct Options{
     float value = 0.0;
 };
 const int relaypin = 7;
+const int buzzerpin = 9;
 struct Options Option1;
 struct Options Option2;
 struct Options Option3;
 bool half = false;
+bool on = false;
+int toggle = 0;
 LiquidCrystal_I2C lcd(0x27,20,4);
 GPRS GSMTEST(PIN_RX,PIN_TX,BAUDRATE);//RX,TX,BAUDRATE
 PZEM004T pzem(50,51);  //(RX,TX) connect to TX,RX of PZEM
 IPAddress ip(192,168,1,1);
 
-
 void setup() {
   pinMode(relaypin,OUTPUT);
+  pinMode(8,OUTPUT);
+  pinMode(buzzerpin,OUTPUT);
+  digitalWrite(8,LOW); //pin8 is used as ground or common
+  digitalWrite(relaypin,LOW);
+  digitalWrite(buzzerpin,LOW);
   Serial.begin(9600);
-  if(isnan(EEPROM.get(0xF,subscriberBalance))){
+  lcd.init();
+  lcd.backlight();
+  if(isnan(EEPROM.get(subscriberBalanceADDR,subscriberBalance))){
     subscriberBalance = 0.0;
   }
   else{
-     subscriberBalance = EEPROM.get(0xF,subscriberBalance);
-     if(subscriberBalance > 0.0){
-      ON();
-     }
-     else{
-      OFF();
-     }
+     subscriberBalance = EEPROM.get(subscriberBalanceADDR,subscriberBalance);
+//     if(subscriberBalance > 0.0){
+//      ON();
+//     }
+//     else{
+//      OFF();
+//     }
   }
 
-//  if((EEPROM.get(0xF,subscriberBalance) > 100000)){
-//    subscriberBalance = 0.0;
-//  }
-
-  if(isnan(EEPROM.get(0x16,kiloWattPrev))){
+  if(isnan(EEPROM.get(kiloWattPrevADDR,kiloWattPrev))){
     kiloWattPrev = 0.0;
   }
   else{
-    kiloWattPrev = EEPROM.get(0x16,kiloWattPrev);
+    kiloWattPrev = EEPROM.get(kiloWattPrevADDR,kiloWattPrev);
   }
-  lcd.init();
-  lcd.backlight();
-  Serial.begin(9600);
+
   strcpy(Option1.code,"PE1"); //assign sms code for 100KW
   Option1.value = 1.0;//100 KW
-  
   strcpy(Option2.code,"PE2"); //assign sms code for 200KW
   Option2.value = 2.0;//200 KW
-
+  strcpy(Option3.code,"PE3"); //assign sms code for 300KW
+  Option3.value = 3.0;//300 KW
+  strcpy(Option1.code,"PE1"); //assign sms code for 100KW
+  Option1.value = 1.0;//100 KW
+  strcpy(Option2.code,"PE2"); //assign sms code for 200KW
+  Option2.value = 2.0;//200 KW
   strcpy(Option3.code,"PE3"); //assign sms code for 300KW
   Option3.value = 3.0;//300 KW
   lcd.clear();
   lcd.print(F("Initializing"));
-  while(!GSMTEST.init()) {
-      delay(10000L);
+  while(!GSMTEST.init()){
+      delay(1000);
       //digitalWrite(7,LOW);
       lcd.setCursor(0,1);
       lcd.print(F("INIT ERROR"));
@@ -98,65 +108,111 @@ void setup() {
   CheckMaster();
   lcd.clear(); 
   defaultLCD();
-  
-
-
-  
 }
-
-
 void loop() {
   checkInbox = checkInboxContent();
     if(checkInbox){
       if(strcmp(phone,MASTER_NUMBER) == 0){
         if(strcmp(message,Option1.code)==0){
           subscriberBalance += Option1.value;
-          EEPROM.put(0xF,subscriberBalance);
+          subscriberPoints += Option1.value;
+          EEPROM.put(0x30,subscriberPoints);
+          EEPROM.put(subscriberBalanceADDR,subscriberBalance);
         }
         else if(strcmp(message,Option2.code)==0){
           subscriberBalance += Option2.value;
-          EEPROM.put(0xF,subscriberBalance);
+          subscriberPoints += Option2.value;
+          EEPROM.put(0x30,subscriberPoints);
+          EEPROM.put(subscriberBalanceADDR,subscriberBalance);
         }
     
         else if(strcmp(message,Option3.code)==0){
           subscriberBalance += Option3.value;
-          EEPROM.put(0xF,subscriberBalance);
- 
-          
+          subscriberPoints += Option3.value;
+          EEPROM.put(0x30,subscriberPoints);
+          EEPROM.put(subscriberBalanceADDR,subscriberBalance);   
         }
 
        else if(strcmp(message,"PE1 set")==0){
           subscriberBalance = Option1.value;
-          EEPROM.put(0xF,subscriberBalance);
+          subscriberPoints = Option1.value;
+          EEPROM.put(0x30,subscriberPoints);
+          EEPROM.put(subscriberBalanceADDR,subscriberBalance);
         }
-      else if(strcmp(message,"PE set1")==0){
+       else if(strcmp(message,"PE set1")==0){
           subscriberBalance = 0.1;
-          EEPROM.put(0xF,subscriberBalance);
+          subscriberPoints = 0.1;
+          EEPROM.put(0x30,subscriberPoints);
+          EEPROM.put(subscriberBalanceADDR,subscriberBalance);
         }
-     else if(strcmp(message,"PE set2")==0){
+      else if(strcmp(message,"PE set2")==0){
           subscriberBalance = 0.2;
-          EEPROM.put(0xF,subscriberBalance);
+          subscriberPoints = 0.2;
+          EEPROM.put(0x30,subscriberPoints);
+          EEPROM.put(subscriberBalanceADDR,subscriberBalance);
         }
-     else if(strcmp(message,"PE reset")==0){
+      else if(strcmp(message,"PE reset")==0){
           subscriberBalance = 0.0;
-          EEPROM.put(0xF,subscriberBalance);
-        }          
-        else{
-         Serial.println(codeError);
+          subscriberPoints = 0.0;
+          EEPROM.put(0x30,subscriberPoints);
+          EEPROM.put(subscriberBalanceADDR,subscriberBalance);
         }
-        Serial.println(subscriberBalance);
+          
+    else{
+         Serial.println(codeError);
+         GSMTEST.sendSMS(MASTER_NUMBER,codeError);
+        }
     }
-    else if(strcmp(message,"delete master")==0){
+  else if(strcmp(message,"delete master")==0){
           EEPROM.write(1,0);
           lcd.clear();
           CheckMaster();
         }
-    else{
+
+ else{
       Serial.println(notMASTER);
     }
 
     defaultLCD();
+}
+
+ if(subscriberBalance > 0.0){
+    if(!on){
+      on = true;
+      ON();
+    }
+    
+   }
+else {
+    if(on){
+    for(int i = 0;i<10;i++){
+      digitalWrite(buzzerpin,toggle ^= 1);
+      delay(100);
+    }
+    
+    
+    on = false;
+    subscriberBalance = 0.0;
+    EEPROM.put(subscriberBalanceADDR,subscriberBalance);
+    subscriberPoints = 0.0;
+    EEPROM.put(0x30,subscriberPoints);
+    EEPROM.put(subscriberBalanceADDR,0.0);
+    OFF();
+    }
+
   }
+  
+if(subscriberBalance <= 0.5*subscriberPoints){
+      if(!half){
+        half = true;
+        GSMTEST.sendSMS(MASTER_NUMBER,BALANCE_HALF);
+      }
+    }
+else{
+      if(half){
+        half = false;
+      }
+    }
 
   float v = pzem.voltage(ip);
   if (v < 0.0) v = 0.0;
@@ -175,44 +231,32 @@ void loop() {
   if(kiloWatt !=  kiloWattPrev){ //check if reading has changed
     if(subscriberBalance > 0.0){
       subscriberBalance -= (kiloWatt - kiloWattPrev);
-    }
-    
-    EEPROM.put(0xF,subscriberBalance);
-    kiloWattPrev = kiloWatt;
-    EEPROM.put(0x16,kiloWattPrev);
-    lcd.setCursor(12,3);
-    lcd.print(subscriberBalance);
-    if(subscriberBalance <= 0.5*subscriberBalance && subscriberBalance > 0.0){
-      if(!half){
-        half = true;
-        GSMTEST.sendSMS(PHONE_NUMBER,BALANCE_HALF);
-      }
+      EEPROM.put(subscriberBalanceADDR,subscriberBalance);
     }
     else{
-      if(half){
-        half = false;
-      }
+          subscriberPoints = 0.0;
+          EEPROM.put(0x30,subscriberPoints);
+          EEPROM.put(subscriberBalanceADDR,0.0);
     }
-   if(subscriberBalance > 0.0){
-    ON();
-   }
-     else {
-      OFF();
-      subscriberBalance = 0.0;
-      EEPROM.put(0xF,subscriberBalance);
-     }
+ 
+    kiloWattPrev = kiloWatt;
+    EEPROM.put(kiloWattPrevADDR,kiloWattPrev);
+    lcd.setCursor(12,3);
+    lcd.print(subscriberBalance);
+
   }
   lcd.setCursor(3,1);
-  lcd.print((p)/(v*i));
-  lcd.setCursor(4,2);
-  //lcd.print((e/1000.0));
+  float pf =(p)/(v*i);
+  if(pf>=1){
+    //DO nothing
+  }
+ else{
+  lcd.print(pf);
+ }
+  lcd.setCursor(11,2);
   lcd.print(kiloWatt);
-  delay(1000);
-
-
-  
+  delay(1000);  
 }
-
 
 bool checkInboxContent(){
    messageIndex = GSMTEST.isSMSunread();
@@ -238,129 +282,37 @@ void CheckMaster(){
     lcd.print(F("Reg Num"));
     do {
       //do nothing
-    }while (!checkInboxContent());                  // Program will not go further while you not get a successful read
-
+    }while (!checkInboxContent());            // Program will not go further while you not get a successful read
     if(strcmp(message,"reg 143")==0){
-
-             convertNumber();
-            for ( int j = 0; j < 5; j++ ) {        // Loop 4 times
-              EEPROM.write( 2 + j, extracted_stripednum[j] );  // Write scanned PICC's UID to EEPROM, start from address 2
-            }
-            EEPROM.write(1, 143);                  // Write to EEPROM we defined Master Card.
-            lcd.clear();
-            lcd.print(F("Master Defined"));
-         
-          lcd.clear();
-          lcd.print(F("Master Number"));
-          for ( int i = 0; i < 5; i++ ) {          // Read Master Card's UID from EEPROM
-            extracted_stripednum[i] = EEPROM.read(2 + i);    // Write it to masterCard
-          }
-          //Serial.println();
-          for(int i=0;i< 5;i++){
-            char tempbuffer[2];
-            static int counter = 4;
-            if(i<4){
-              //MASTER_NUMBER[i] = extracted_stripednum[i];
-              
-              itoa(extracted_stripednum[i],tempbuffer,10);
-              MASTER_NUMBER[counter++] = tempbuffer[0];
-              MASTER_NUMBER[counter++] = tempbuffer[1];
-        
-        //      Serial.println(tempbuffer[0]);
-        //      Serial.println(tempbuffer[1]);
-            }
-            else{
-              itoa(extracted_stripednum[i],tempbuffer,10);
-              MASTER_NUMBER[counter++] = tempbuffer[0];
-            }
-            
-          }
-         for(int i=0;i<strlen(MASTER_NUMBER);i++){
-          //Serial.print(MASTER_NUMBER[i]);
-         }
-         //Serial.println();
-         lcd.setCursor(0,1);
-         lcd.print(MASTER_NUMBER);
-         GSMTEST.sendSMS(MASTER_NUMBER,MESSAGE);
-         lcd.clear(); 
-         defaultLCD();
-
+         EEPROM.put(2,phone);
+         delay(100);
+         EEPROM.write(1,143);
+         delay(100);
+         EEPROM.get(2,MASTER_NUMBER);
+         Serial.print(MASTER_NUMBER);
+         Serial.println();
+         //GSMTEST.sendSMS(MASTER_NUMBER,MESSAGE);
     }
 
     else{
-      lcd.clear();
-      CheckMaster();
+         lcd.clear();
+         CheckMaster();
     }
-
-    }
-
-    else{
-
-      for ( int i = 0; i < 5; i++ ) {          // Read Master Card's UID from EEPROM
-            extracted_stripednum[i] = EEPROM.read(2 + i);    // Write it to masterCard
-          }
-          //Serial.println();
-          for(int i=0;i< 5;i++){
-            char tempbuffer[2];
-            static int counter = 4;
-            if(i<4){
-              //MASTER_NUMBER[i] = extracted_stripednum[i];
-              
-              itoa(extracted_stripednum[i],tempbuffer,10);
-              MASTER_NUMBER[counter++] = tempbuffer[0];
-              MASTER_NUMBER[counter++] = tempbuffer[1];
-        
-        //      Serial.println(tempbuffer[0]);
-        //      Serial.println(tempbuffer[1]);
-            }
-            else{
-              itoa(extracted_stripednum[i],tempbuffer,10);
-              MASTER_NUMBER[counter++] = tempbuffer[0];
-            }
-            
-          }
-         for(int i=0;i<strlen(MASTER_NUMBER);i++){
-          //Serial.print(MASTER_NUMBER[i]);
-         }
-         //Serial.println();
-         lcd.setCursor(0,1);
-         lcd.print(MASTER_NUMBER);
-         GSMTEST.sendSMS(MASTER_NUMBER,MESSAGE);
-         lcd.clear(); 
-         defaultLCD();
-    }
-
- 
+  }
+ EEPROM.get(2,MASTER_NUMBER);
+ lcd.clear();
+ delay(100);
+ lcd.clear();
+ lcd.setCursor(0,1);
+ lcd.print(MASTER_NUMBER);
+ delay(3000);
+ lcd.clear();
+ delay(100);
+ GSMTEST.sendSMS(MASTER_NUMBER,MESSAGE);
+ lcd.clear(); 
+ defaultLCD();
 }
 
-void convertNumber(){
-  char stripednum[9];
-  int increment = 0;
-  char numlength = strlen(phone);
-
-  if(numlength > 11){
-    increment = 4;
-  }
-  else{
-    increment = 2;
-  }
-  for(int i=0;i<numlength;i++) if(i<=9) stripednum[i] = phone[i+increment];
- for(int i=0;i<5;i++){
-        static int counter = 0;
-        if(counter < 8){
-            if(extracted_stripednum[i] == 0) extracted_stripednum[i] = (stripednum[counter] - 48)* 10; // multiply by ten for tens place
-              extracted_stripednum[i] += (stripednum[counter+1] - 48) * 1; // multiply by one for ones place
-              counter += 2;
-        }
-
-        else{
-          if(extracted_stripednum[i] == 0) extracted_stripednum[i] = (stripednum[counter] - 48)* 1; // multiply by ten for tens place
-        }
-        
-        //Serial.println((byte)extracted_stripednum[i]);
-      
- }
-}
 
 void defaultLCD(){
   lcd.setCursor(0,0);
@@ -372,7 +324,7 @@ void defaultLCD(){
   lcd.setCursor(0,1);
   lcd.print(F("PF="));
   lcd.setCursor(0,2);
-  lcd.print(F("kWh="));
+  lcd.print(F("Cons.(kWh)="));
   lcd.setCursor(0,3);
   lcd.print(F("E-Remaining:"));
   lcd.setCursor(12,3);
