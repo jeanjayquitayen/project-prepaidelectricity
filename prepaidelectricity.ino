@@ -189,7 +189,7 @@ else {
       digitalWrite(buzzerpin,toggle ^= 1);
       delay(100);
     }
-    
+      digitalWrite(buzzerpin,LOW);
     
     on = false;
     subscriberBalance = 0.0;
@@ -206,11 +206,20 @@ if(subscriberBalance <= 0.5*subscriberPoints){
       if(!half){
         half = true;
         GSMTEST.sendSMS(MASTER_NUMBER,BALANCE_HALF);
+        if(on){
+        for(int i = 0;i<10;i++){
+          digitalWrite(buzzerpin,toggle ^= 1);
+          delay(1000);
+        }
+      digitalWrite(buzzerpin,LOW);
+    
+    on = false;
       }
     }
 else{
       if(half){
         half = false;
+        on = true;
       }
     }
 
@@ -247,15 +256,14 @@ else{
   }
   lcd.setCursor(3,1);
   float pf =(p)/(v*i);
-  if(pf>=1){
-    //DO nothing
+  if(pf<=1){
+    lcd.print(pf);
   }
- else{
-  lcd.print(pf);
- }
+
   lcd.setCursor(11,2);
   lcd.print(kiloWatt);
   delay(1000);  
+  }
 }
 
 bool checkInboxContent(){
